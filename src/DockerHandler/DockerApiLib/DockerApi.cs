@@ -8,6 +8,7 @@ namespace DockerApiLib
         Task<IList<ContainerInfo>> GetAllContainersAsync();
         Task<bool> CreateContainerAsync(ContainerCreateData containerCreateData);
         Task<bool> RemoveContainerAsync(ContainerInfo containerInfo);
+        Task<IList<ContainerInfo>> GetExitContainerAsync();
 
     }
 
@@ -49,24 +50,24 @@ namespace DockerApiLib
             using var containerRemoveCts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
 
             var result = await _client.Containers.StopContainerAsync(
-                containerInfo.Name,
-                new ContainerStopParameters
-                {
-                    WaitBeforeKillSeconds = 0
-                },
-                containerRemoveCts.Token
-            );
+                    containerInfo.Id,
+                    new ContainerStopParameters
+                    {
+                        WaitBeforeKillSeconds = 0
+                    },
+                    containerRemoveCts.Token
+                );
 
             await _client.Containers.RemoveContainerAsync(
-                containerInfo.Name,
+               containerInfo.Id,
                 new ContainerRemoveParameters
                 {
                     Force = true
                 },
                 containerRemoveCts.Token
             );
-
             return result;
+
         }
 
         public async Task<IList<ContainerInfo>> GetAllContainersAsync()
@@ -80,9 +81,32 @@ namespace DockerApiLib
                  containerListCts.Token
              );
 
-            //var result = containerList.Select(x => new ContainerInfo(x.ID, x.Names))
             var result = containerList.Select(x => new ContainerInfo(x.ID, x.Names.FirstOrDefault(), x.State)).ToList();
 
+            return result;
+        }
+
+
+        public async Task<IList<ContainerInfo>> GetExitContainerAsync()
+        {
+            using var containerListCts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+            IList<ContainerListResponse> containerList = await _client.Containers.ListContainersAsync(
+                 new ContainersListParameters
+                 {
+                     
+                     Filters = new Dictionary<string, IDictionary<string, bool>>
+                     {
+                         ["status"] = new Dictionary<string, bool>
+                         {
+                             ["exited"] = true
+                         }
+                     },
+                     All = true
+                 },
+                 containerListCts.Token
+             );
+
+            var result = containerList.Select(x => new ContainerInfo(x.ID, x.Names.FirstOrDefault(), x.State)).ToList();
 
             return result;
         }
@@ -122,6 +146,7 @@ namespace DockerApiLib
             // TODO: uncomment the following line if the finalizer is overridden above.
             GC.SuppressFinalize(this);
         }
+
 
         #endregion
     }

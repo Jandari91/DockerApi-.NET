@@ -35,6 +35,8 @@ namespace DockerHandler
         public ICommand RemoveCommand { get; set; }
         public ICommand InputCommand { get; set; }
         public ICommand RefreshCommand { get; set; }
+        public ICommand ExitFilterCommand { get; set; }
+        
 
         private string _inputText = string.Empty;
         private DockerApi dockerApi;
@@ -44,12 +46,18 @@ namespace DockerHandler
             RemoveCommand = new DelegateCommand(RemoveCommandAction);
             InputCommand = new DelegateCommand(InputCommandAction);
             RefreshCommand = new DelegateCommand(RefreshCommandAction);
+            ExitFilterCommand = new DelegateCommand(ExitFilterCommandAction);
 
             var Address = new Address("npipe://./pipe/docker_engine");
             dockerApi = new DockerApi(Address);
         }
 
-
+        private async void ExitFilterCommandAction()
+        {
+            ContainerItems.Clear();
+            var result = await dockerApi.GetExitContainerAsync();
+            ContainerItems.AddRange(result.Select(x => new ContainerItem(x.Id, x.Name, x.State)));
+        }
 
         private async void InputCommandAction()
         {
