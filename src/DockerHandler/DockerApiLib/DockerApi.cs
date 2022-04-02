@@ -10,6 +10,7 @@ namespace DockerApiLib
         Task<bool> RemoveContainerAsync(ContainerInfo containerInfo);
         Task<IList<ContainerInfo>> GetExitContainerAsync();
 
+        Task GetContainerLogsAsync(Action<string> logEvent, ContainerInfo containerInfo);
     }
 
     public class DockerApi : IDockerApi
@@ -111,6 +112,27 @@ namespace DockerApiLib
             return result;
         }
 
+        public async Task GetContainerLogsAsync(Action<string> logEvent, ContainerInfo containerInfo)
+        {
+            using var containerLogsCts = new CancellationTokenSource();
+            containerLogsCts.CancelAfter(TimeSpan.FromSeconds(20));
+
+            var containerLogsTask = _client.Containers.GetContainerLogsAsync(
+                containerInfo.Id,
+                new ContainerLogsParameters
+                {
+                    ShowStderr = true,
+                    ShowStdout = true,
+                    Timestamps = true,
+                    Follow = true
+                },
+                containerLogsCts.Token,
+                new Progress<string>((m) => { logEvent?.Invoke(m); })
+            );
+
+            await containerLogsTask;
+        }
+
         #region IDisposable Support
         private bool disposedValue = false; // To detect redundant calls
 
@@ -147,7 +169,7 @@ namespace DockerApiLib
             GC.SuppressFinalize(this);
         }
 
-
+        
         #endregion
     }
 }
