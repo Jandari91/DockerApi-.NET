@@ -1,5 +1,6 @@
 ﻿using Docker.DotNet;
 using Docker.DotNet.Models;
+using System.Text;
 
 namespace DockerApiLib
 {
@@ -9,8 +10,9 @@ namespace DockerApiLib
         Task<bool> CreateContainerAsync(ContainerCreateData containerCreateData);
         Task<bool> RemoveContainerAsync(ContainerInfo containerInfo);
         Task<IList<ContainerInfo>> GetExitContainerAsync();
-
         Task GetContainerLogsAsync(Action<string> logEvent, ContainerInfo containerInfo);
+        Task ExitedContainerHandler(Action<string> exitedEvent, ContainerInfo containerInfo);
+        Task ExecContainerAcync(Action<string> logEvent, ContainerCreateData containerCreateData);
     }
 
     public class DockerApi : IDockerApi
@@ -39,6 +41,7 @@ namespace DockerApiLib
             var result = await _client.Containers.StartContainerAsync(
                 createContainerResponse.ID,
                 new ContainerStartParameters(),
+                
                 waitContainerCts.Token
             );
 
@@ -54,7 +57,7 @@ namespace DockerApiLib
                     containerInfo.Id,
                     new ContainerStopParameters
                     {
-                        WaitBeforeKillSeconds = 0
+                        WaitBeforeKillSeconds = 0,
                     },
                     containerRemoveCts.Token
                 );
@@ -125,13 +128,96 @@ namespace DockerApiLib
                     ShowStdout = true,
                     Timestamps = true,
                     Follow = true
+                    
                 },
                 containerLogsCts.Token,
-                new Progress<string>((m) => { logEvent?.Invoke(m); })
+                new Progress<string>((m) => { 
+                    logEvent?.Invoke(m); 
+                    
+                    }
+                )
             );
 
             await containerLogsTask;
         }
+
+        public async Task ExecContainerAcync(Action<string> logEvent, ContainerCreateData containerCreateData)
+        {
+            using var waitContainerCts = new CancellationTokenSource(delay: TimeSpan.FromSeconds(10));
+            var createContainerResponse = await _client.Containers.CreateContainerAsync(
+                new CreateContainerParameters
+                {
+                    Image = containerCreateData.Image,
+                    Name = containerCreateData.Name,
+                },
+                waitContainerCts.Token
+            );
+
+            var config = new ContainerAttachParameters
+            {
+                Stdin = false,
+                Stdout = true,
+                Stderr = true,
+                Stream = true
+            };
+
+            MultiplexedStream stream = null;
+            Task streamTask = null;
+            MemoryStream stdOutputStream = new MemoryStream();
+            try
+            {
+                if (config != null)
+                {
+                    stream = await _client.Containers.AttachContainerAsync(createContainerResponse.ID, false, config, default(CancellationToken));
+                    streamTask = stream.CopyOutputToAsync(null, stdOutputStream, null, default(CancellationToken));
+                }
+
+                if (!await _client.Containers.StartContainerAsync(createContainerResponse.ID, new ContainerStartParameters()))
+                {
+                    throw new Exception("The container has already started.");
+                }
+
+                if (config != null)
+                {
+                    await streamTask;
+                }
+                logEvent?.Invoke("종료됌!");
+
+            }
+            finally
+            {
+                stream?.Dispose();
+            }
+        }
+
+        //public async Task ExitedContainerHandler(Action<string> exitedEvent, ContainerInfo containerInfo)
+        //{
+        //    var config = new ContainerLogsParameters
+        //    {
+        //        ShowStderr = true,
+        //        ShowStdout = true,
+        //        Timestamps = true,
+        //        Follow = true
+        //    };
+        //    var buffer = new byte[1024];
+        //    using (var stream = await _client.Containers.GetContainerLogsAsync(containerInfo.Id, true, config, default(CancellationToken)))
+        //    {
+        //        var result = await stream.ReadOutputAsync(buffer, 0, buffer.Length, default(CancellationToken));
+
+        //        do
+        //        {
+        //            Console.Write(Encoding.UTF8.GetString(buffer, 0, result.Count));
+        //        }
+        //        while (!result.EOF);
+        //        exitedEvent(containerInfo.Name);
+        //    }
+        //}
+
+        public async Task ExitedContainerHandler(Action<string> exitedEvent, ContainerInfo containerInfo)
+        {
+            
+        }
+
 
         #region IDisposable Support
         private bool disposedValue = false; // To detect redundant calls
@@ -168,8 +254,6 @@ namespace DockerApiLib
             // TODO: uncomment the following line if the finalizer is overridden above.
             GC.SuppressFinalize(this);
         }
-
-        
         #endregion
     }
 }

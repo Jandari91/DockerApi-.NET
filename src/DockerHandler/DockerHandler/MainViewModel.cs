@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Windows;
 using System.Windows.Input;
 
 namespace DockerHandler
@@ -44,9 +45,12 @@ namespace DockerHandler
         public ICommand InputCommand { get; set; }
         public ICommand RefreshCommand { get; set; }
         public ICommand ExitFilterCommand { get; set; }
-        
+        public ICommand MonitoringCommand { get; set; }
+        public ICommand AttachStartCommand { get; set; }
 
         
+
+
         private DockerApi dockerApi;
         private string dockerImage = "Worker";
         public MainViewModel()
@@ -56,6 +60,9 @@ namespace DockerHandler
             InputCommand = new DelegateCommand(InputCommandAction);
             RefreshCommand = new DelegateCommand(RefreshCommandAction);
             ExitFilterCommand = new DelegateCommand(ExitFilterCommandAction);
+            MonitoringCommand = new DelegateCommand(MonitoringCommandAction);
+            AttachStartCommand = new DelegateCommand(AttachStartCommandAction);
+
 
             var Address = new Address("npipe://./pipe/docker_engine");
             dockerApi = new DockerApi(Address);
@@ -77,6 +84,17 @@ namespace DockerHandler
                 RefreshCommandAction();
             }
         }
+
+        private async void AttachStartCommandAction()
+        {
+            if (InputText != null)
+            {
+                await dockerApi.ExecContainerAcync((x) => Logs.Add(x),new ContainerCreateData("worker", InputText));
+
+                RefreshCommandAction();
+            }
+        }
+        
 
         private async void RemoveCommandAction()
         {
@@ -103,6 +121,16 @@ namespace DockerHandler
                     (x) => Logs.Add(x)
                     , new ContainerInfo(SelectedItem.Id, SelectedItem.Name));
                 //var result = dockerApi.AttachContainerAsync((x) => Logs.Add(x), new ContainerInfo(SelectedItem.Id, SelectedItem.Name));
+            }
+        }
+
+        private void MonitoringCommandAction()
+        {
+            if (SelectedItem != null)
+            {
+                var result = dockerApi.ExitedContainerHandler(
+                    (x) => MessageBox.Show($"{x} is Exited")
+                    , new ContainerInfo(SelectedItem.Id, SelectedItem.Name));
             }
         }
 
